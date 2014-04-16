@@ -1,0 +1,96 @@
+<?xml version="1.0" encoding="utf-8"?>
+
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+              android:orientation="vertical"
+              android:layout_width="match_parent"
+              android:layout_height="match_parent"
+        android:background="@android:color/white">
+    <RelativeLayout
+        android:layout_width="fill_parent"
+        android:layout_height="50dp">
+        <Button
+            android:layout_width="100dp"
+            android:layout_marginLeft="5dp"
+            style="@android:style/Widget.Holo.Button.Borderless"
+            android:textColor="@android:color/holo_blue_dark"
+            android:layout_height="wrap_content"
+            android:text="〈 Back"
+            android:onClick="backClicked"
+            />
+
+        <Button
+            android:layout_width="100dp"
+            android:layout_marginRight="5dp"
+            android:layout_centerInParent="true"
+            style="@android:style/Widget.Holo.Button.Borderless"
+            android:textColor="@android:color/holo_blue_dark"
+            android:layout_height="wrap_content"
+            android:text="Import"
+            android:onClick="importClicked"
+            />
+
+        <Button
+            android:layout_width="100dp"
+            android:layout_marginRight="5dp"
+            android:layout_alignParentRight="true"
+            style="@android:style/Widget.Holo.Button.Borderless"
+            android:textColor="@android:color/holo_blue_dark"
+            android:layout_height="wrap_content"
+            android:text="Export 〉"
+            android:onClick="exportClicked"
+            />
+    </RelativeLayout>
+    <LinearLayout
+        android:layout_margin="10dp"
+        android:orientation="vertical"
+        android:layout_width="fill_parent"
+        android:layout_height="300dip"
+        android:id="@+id/graph" />
+    <ScrollView
+        android:layout_width="fill_parent"
+        android:layout_height="wrap_content">
+        <RelativeLayout
+            android:layout_width="fill_parent"
+            android:layout_height="wrap_content">
+            <TextView
+                android:id="@+id/instructions"
+                android:layout_margin="10dp"
+                android:layout_width="fill_parent"
+                android:layout_height="wrap_content"
+                android:text="@string/enterHue" />
+            <EditText
+                android:id="@+id/query"
+                android:layout_below="@id/instructions"
+                android:layout_width="250dp"
+                android:layout_height="wrap_content"
+                android:layout_centerVertical="true"
+                android:layout_marginLeft="5dp"
+                />
+            <Button
+                android:layout_width="fill_parent"
+                android:layout_height="wrap_content"
+                android:layout_toRightOf="@id/query"
+                android:layout_alignTop="@id/query"
+                android:onClick="queryClicked"
+                android:text="Compute"
+                />
+            <TextView
+                android:id="@+id/hueText"
+                android:layout_below="@id/query"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_margin="10dp"
+                android:text="Hue: "
+                />
+            <TextView
+                android:id="@+id/hueVal"
+                android:layout_alignTop="@id/hueText"
+                android:layout_toRightOf="@id/hueText"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textStyle="bold"
+                />
+        </RelativeLayout>
+    </ScrollView>
+
+</LinearLayout>
