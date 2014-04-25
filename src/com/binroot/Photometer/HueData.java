@@ -89,6 +89,10 @@ public class HueData extends HashMap<Double, ArrayList<Double>> {
         return new Pair<double[], double[]>(xs, ys);
     }
 
+    public void remove(double key, double val) {
+        this.get(key).remove(val);
+    }
+
     public String hueDataToString() {
         try {
             StringBuilder sb = new StringBuilder();

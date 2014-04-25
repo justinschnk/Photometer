@@ -1,6 +1,8 @@
 package com.binroot.Photometer;
 
 import android.app.Activity;
+import android.app.AlertDialog;
+import android.content.DialogInterface;
 import android.content.Intent;
 import android.database.Cursor;
 import android.graphics.Color;
@@ -8,9 +10,14 @@ import android.net.Uri;
 import android.os.Bundle;
 import android.os.Environment;
 import android.provider.MediaStore;
+import android.text.Editable;
+import android.text.TextWatcher;
 import android.util.Log;
 import android.util.Pair;
+import android.view.KeyEvent;
+import android.view.MotionEvent;
 import android.view.View;
+import android.view.ViewGroup;
 import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.TextView;
@@ -33,24 +40,108 @@ public class GraphActivity extends Activity {
     GraphViewSeries hueSeries;
     GraphViewSeries expSeries;
 
+    EditText hueQuery;
+    EditText concentrationQuery;
+
+    TextView equation;
+
     final int IMPORT_FILE = 0;
 
     public void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.graph);
+        hueQuery = ((EditText) findViewById(R.id.hueQuery));
+        concentrationQuery = (EditText) findViewById(R.id.concentrationQuery);
+        equation = (TextView) findViewById(R.id.equation);
 
         hueData = new HueData(getApplicationContext(), "1");
-        hueSeries = new GraphViewSeries(new GraphView.GraphViewData[0]);
-        expSeries = new GraphViewSeries(new GraphView.GraphViewData[0]);
-        graphView = new LineGraphView(this , "Protein Concentration vs. Hue Value");
+        hueSeries = new GraphViewSeries("Actual", new GraphViewSeries.GraphViewSeriesStyle(Color.rgb(255,0,0), 1), new GraphView.GraphViewData[0]);
+        expSeries = new GraphViewSeries("Predicted", new GraphViewSeries.GraphViewSeriesStyle(Color.rgb(56,192,244), 5), new GraphView.GraphViewData[0]);
+        graphView = new LineGraphView(this , "Concentration vs. Hue");
         graphView.addSeries(hueSeries);
         graphView.addSeries(expSeries);
+        graphView.setDisableTouch(true);
         graphView.setScalable(true);
         graphView.getGraphViewStyle().setHorizontalLabelsColor(Color.BLACK);
         graphView.getGraphViewStyle().setVerticalLabelsColor(Color.BLACK);
         graphView.getGraphViewStyle().setGridColor(Color.GRAY);
         LinearLayout layout = (LinearLayout) findViewById(R.id.graph);
         layout.addView(graphView);
+
+
+        Bundle bundle = getIntent().getExtras();
+        Log.d(DEBUG, "bundle "+bundle);
+        if (bundle != null) {
+            hueData.load();
+            double hue = bundle.getDouble("hue");
+            hue = (double) Math.round(hue*100000) / 100000;
+            hueQuery.setText(hue+"");
+            hueQueryClicked(null);
+        }
+
+        concentrationQuery.setOnTouchListener(new View.OnTouchListener() {
+            @Override
+            public boolean onTouch(View view, MotionEvent motionEvent) {
+                if(motionEvent.getAction() == MotionEvent.ACTION_DOWN) {
+                    concentrationQueryClicked(null);
+                }
+                return true;
+            }
+        });
+
+
+        hueQuery.addTextChangedListener(new TextWatcher() {
+            @Override
+            public void beforeTextChanged(CharSequence charSequence, int i, int i2, int i3) {}
+
+            @Override
+            public void onTextChanged(CharSequence charSequence, int i, int i2, int i3) {}
+
+            @Override
+            public void afterTextChanged(Editable editable) {
+                hueQueryClicked(null);
+            }
+        });
+
+    }
+
+    public void concentrationQueryClicked(View v) {
+        final double result;
+        try {
+            result = Double.parseDouble(hueQuery.getText().toString());
+        } catch(Exception e) {
+            return;
+        }
+
+        final EditText editText = new EditText(getApplicationContext());
+        editText.setLayoutParams(new ViewGroup.MarginLayoutParams(300, 50));
+        editText.setTextColor(Color.BLACK);
+
+        AlertDialog.Builder builder = new AlertDialog.Builder(GraphActivity.this);
+        builder.setMessage("Enter protein concentration value for hue "+result)
+                .setPositiveButton("Save", new DialogInterface.OnClickListener() {
+                    @Override
+                    public void onClick(DialogInterface dialogInterface, int i) {
+                        try {
+                            double key = Double.parseDouble(editText.getText().toString());
+                            hueData.insertAppend(key, result);
+                            drawExpGraph();
+                            drawHueGraph();
+                            hueQueryClicked(null);
+                        } catch (NumberFormatException e) {
+                        }
+                    }
+                })
+                .setNegativeButton("Cancel", new DialogInterface.OnClickListener() {
+                    @Override
+                    public void onClick(DialogInterface dialogInterface, int i) {
+
+                    }
+                })
+                .setView(editText)
+                .setTitle("Feed More Data");
+        AlertDialog dialog = builder.create();
+        dialog.show();
     }
 
     public void backClicked(View v) {
@@ -63,19 +154,22 @@ public class GraphActivity extends Activity {
         startActivityForResult(i, IMPORT_FILE);
     }
 
-    public void queryClicked(View v) {
+    public void hueQueryClicked(View v) {
 
-        String qStr = ((EditText) findViewById(R.id.query)).getText().toString();
+        String qStr = hueQuery.getText().toString();
         try {
+            hueData.exponentialFit();
             double qVal = Double.parseDouble(qStr);
-            double hue = getHueFromConcentration(hueData.getParams()[0], hueData.getParams()[1], hueData.getParams()[2], qVal);
-            ((TextView)findViewById(R.id.hueVal)).setText(hue+"");
+            double conc = getConcentrationFromHue(hueData.getParams()[0], hueData.getParams()[1], hueData.getParams()[2], qVal);
+            conc = (double) Math.round(conc*100000) / 100000;
+            concentrationQuery.setText(conc + "");
         } catch(Exception e) {
-            Toast.makeText(getApplicationContext(), "Invalid input", Toast.LENGTH_SHORT).show();
+            concentrationQueryClicked(null);
+            Log.d(DEBUG, "err: "+e.getMessage());
         }
     }
 
-    public double getHueFromConcentration(double a, double b, double c, double y) {
+    public double getConcentrationFromHue(double a, double b, double c, double y) {
         return -(Math.log((-c+y)/a))/b;
     }
 
@@ -155,7 +249,12 @@ public class GraphActivity extends Activity {
 
             b = 1/b;
             Log.d(DEBUG, "a = "+a+ ", b = "+b+", c = "+c);
-            Toast.makeText(getApplicationContext(), a+" * e^(-"+b+" x) + "+c, Toast.LENGTH_SHORT).show();
+            //.makeText(getApplicationContext(), a+" * e^(-"+b+" x) + "+c, Toast.LENGTH_SHORT).show();
+
+            double ra = (double) Math.round(a*1000) / 1000;
+            double rb = -1 * (double) Math.round(b*1000) / 1000;
+            double rc = (double) Math.round(c*1000) / 1000;
+            equation.setText("hue = " + ra + " * exp(" + rb +" * x) + "+rc);
 
             int divs = 1000;
             GraphView.GraphViewData[] data = new GraphView.GraphViewData[divs];

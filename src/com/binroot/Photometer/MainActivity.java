@@ -7,6 +7,7 @@ import android.database.Cursor;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.Color;
+import android.graphics.Point;
 import android.net.Uri;
 import android.os.AsyncTask;
 import android.os.Bundle;
@@ -16,6 +17,8 @@ import android.util.Pair;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.animation.Animation;
+import android.view.animation.ScaleAnimation;
 import android.widget.*;
 import com.binroot.regression.NotEnoughValues;
 import com.binroot.regression.RegressionMethods;
@@ -24,6 +27,7 @@ import java.io.File;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.Stack;
 
 public class MainActivity extends Activity {
 
@@ -47,6 +51,8 @@ public class MainActivity extends Activity {
     Uri mCapturedImageURI;
 
     Bitmap bmp = null;
+
+    Stack<Dimension> dimensions = new Stack<Dimension>();
 
 
     SharedPreferences sp;
@@ -162,21 +168,53 @@ public class MainActivity extends Activity {
         mPreview.setEnabled(false);
     }
 
+    @Override
+    public void onBackPressed() {
+        if (dimensions.size() < 2) {
+            new AlertDialog.Builder(this).setTitle("Are you sure you want to quit?")
+                    .setPositiveButton("Quit", new DialogInterface.OnClickListener() {
+                @Override
+                public void onClick(DialogInterface dialogInterface, int i) {
+                    finish();
+                }
+            }).setNegativeButton("Cancel", new DialogInterface.OnClickListener() {
+                @Override
+                public void onClick(DialogInterface dialogInterface, int i) {
+                    dialogInterface.cancel();
+                }
+            }).show();
+        } else {
+            dimensions.pop();
+            loadPhoto(getPath(mCapturedImageURI), dimensions.peek());
+            mPreview.setEnabled(true);
+        }
+    }
+
     public void galClicked(View v) {
+
+        Animation a = new ScaleAnimation(0,100,0,100);
+        findViewById(R.id.galButton).startAnimation(a);
         startActivityForResult(mPicIntent, SELECT_PICTURE);
     }
 
     public void camClicked(View v) {
+        Animation a = new ScaleAnimation(0,100,0,100);
+        findViewById(R.id.camButton).startAnimation(a);
         startActivityForResult(mCameraIntent, CAMERA_REQUEST);
     }
 
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         if (requestCode == CAMERA_REQUEST && resultCode == RESULT_OK) {
             loadPhoto(getPath(mCapturedImageURI));
+            dimensions.clear();
+            dimensions.add(new Dimension(0, 0, bmp.getWidth(), bmp.getHeight()));
             mPreview.setEnabled(true);
         } else if (requestCode == SELECT_PICTURE && resultCode == RESULT_OK) {
             Uri selectedImageUri = data.getData();
+            mCapturedImageURI = selectedImageUri;
             loadPhoto(getPath(selectedImageUri));
+            dimensions.clear();
+            dimensions.add(new Dimension(0, 0, bmp.getWidth(), bmp.getHeight()));
             mPreview.setEnabled(true);
         }
     }
@@ -191,6 +229,49 @@ public class MainActivity extends Activity {
         return picturePath;
     }
 
+    public void loadPhoto(String imageLocation, Dimension d) {
+        if (imageLocation != null) {
+            Log.d(DEBUG, "image location is "+imageLocation);
+
+            // Get the dimensions of the View
+            int targetW = mPreview.getWidth();
+            int targetH = mPreview.getHeight();
+
+            Log.d(DEBUG, "imageView: "+ targetW+" x "+targetH);
+
+            // Get the dimensions of the bitmap
+            BitmapFactory.Options bmOptions = new BitmapFactory.Options();
+            bmOptions.inJustDecodeBounds = true;
+            BitmapFactory.decodeFile(imageLocation, bmOptions);
+            int photoW = bmOptions.outWidth;
+            int photoH = bmOptions.outHeight;
+
+            if (targetW == 0) {
+                targetW = 500;
+                targetH = photoH/photoW * targetW;
+            }
+
+            // Determine how much to scale down the image
+            int scaleFactor = Math.min(photoW/targetW, photoH/targetH);
+
+            // Decode the image file into a Bitmap sized to fill the View
+            bmOptions.inJustDecodeBounds = false;
+            bmOptions.inSampleSize = scaleFactor;
+            bmOptions.inPurgeable = true;
+
+            bmp = BitmapFactory.decodeFile(imageLocation, bmOptions);
+            Log.d(DEBUG, bmp.getWidth() +" x " + bmp.getHeight());
+
+
+            bmp = Bitmap.createBitmap(bmp, d.x, d.y, d.width, d.height);
+
+            mPreview.setImageBitmap(bmp);
+
+
+        } else {
+            Toast.makeText(this, "Error, image location is null", Toast.LENGTH_SHORT).show();
+        }
+    }
 
     public void loadPhoto(String imageLocation) {
         if (imageLocation != null) {
@@ -226,14 +307,14 @@ public class MainActivity extends Activity {
             Log.d(DEBUG, bmp.getWidth() +" x " + bmp.getHeight());
 
             mPreview.setImageBitmap(bmp);
-
-
         } else {
             Toast.makeText(this, "Error, image location is null", Toast.LENGTH_SHORT).show();
         }
     }
 
     public void dataClicked(View v) {
+        Animation a = new ScaleAnimation(0,100,0,100);
+        findViewById(R.id.dataButton).startAnimation(a);
         AlertDialog.Builder builder = new AlertDialog.Builder(MainActivity.this);
 
         final ArrayList<Double> keys = new ArrayList<Double>(hueData.keySet());
@@ -264,17 +345,21 @@ public class MainActivity extends Activity {
                     }
                 })
                 .setItems(lines, new DialogInterface.OnClickListener() {
-                    public void onClick(DialogInterface dialog, int which) {
+                    public void onClick(DialogInterface dialog, final int which) {
                         AlertDialog.Builder b2 = new AlertDialog.Builder(MainActivity.this);
                         b2.setTitle("Delete Data Point?")
                                 .setPositiveButton("Delete", new DialogInterface.OnClickListener() {
                                     @Override
                                     public void onClick(DialogInterface dialogInterface, int i) {
-
+                                        Log.d(DEBUG, "displayDataList.get(i) = "+displayDataList.get(which));
+                                        Double key = Double.parseDouble(displayDataList.get(i).split(" → ")[0]);
+                                        Double val = Double.parseDouble(displayDataList.get(i).split(" → ")[1]);
+                                        hueData.remove(key, val);
                                     }
                                 }).setNegativeButton("Cancel", new DialogInterface.OnClickListener() {
                             @Override
                             public void onClick(DialogInterface dialogInterface, int i) {
+                                dialogInterface.cancel();
                             }
                         });
                         b2.show();
@@ -307,6 +392,7 @@ public class MainActivity extends Activity {
     private class HueTask extends AsyncTask<Bitmap, Integer, Double> {
 
         protected void onPreExecute() {
+            (findViewById(R.id.hueButton)).setBackgroundResource(android.R.drawable.star_on);
             mProgressPercent.setVisibility(View.VISIBLE);
         }
 
@@ -334,33 +420,40 @@ public class MainActivity extends Activity {
         }
 
         protected void onPostExecute(final Double result) {
-
-            final EditText editText = new EditText(getApplicationContext());
-            editText.setLayoutParams(new ViewGroup.MarginLayoutParams(300, 50));
-            editText.setTextColor(Color.BLACK);
+            (findViewById(R.id.hueButton)).setBackgroundResource(android.R.drawable.star_off);
             mProgressPercent.setVisibility(View.GONE);
-            AlertDialog.Builder builder = new AlertDialog.Builder(MainActivity.this);
-            builder.setMessage("Enter id number:")
-                    .setPositiveButton("Save", new DialogInterface.OnClickListener() {
-                        @Override
-                        public void onClick(DialogInterface dialogInterface, int i) {
-                            try {
-                                double key = Double.parseDouble(editText.getText().toString());
-                                hueData.insertAppend(key, result);
-                            } catch (NumberFormatException e) {
-                            }
-                        }
-                    })
-                    .setNegativeButton("Cancel", new DialogInterface.OnClickListener() {
-                        @Override
-                        public void onClick(DialogInterface dialogInterface, int i) {
 
-                        }
-                    })
-                    .setView(editText)
-                    .setTitle("Hue = " + result);
-            AlertDialog dialog = builder.create();
-            dialog.show();
+            // start GraphActivity
+            Intent graphIntent = new Intent(getApplicationContext(), GraphActivity.class);
+            graphIntent.putExtra("hue", result);
+            startActivity(graphIntent);
+
+//            final EditText editText = new EditText(getApplicationContext());
+//            editText.setLayoutParams(new ViewGroup.MarginLayoutParams(300, 50));
+//            editText.setTextColor(Color.BLACK);
+//
+//            AlertDialog.Builder builder = new AlertDialog.Builder(MainActivity.this);
+//            builder.setMessage("Enter id number:")
+//                    .setPositiveButton("Save", new DialogInterface.OnClickListener() {
+//                        @Override
+//                        public void onClick(DialogInterface dialogInterface, int i) {
+//                            try {
+//                                double key = Double.parseDouble(editText.getText().toString());
+//                                hueData.insertAppend(key, result);
+//                            } catch (NumberFormatException e) {
+//                            }
+//                        }
+//                    })
+//                    .setNegativeButton("Cancel", new DialogInterface.OnClickListener() {
+//                        @Override
+//                        public void onClick(DialogInterface dialogInterface, int i) {
+//
+//                        }
+//                    })
+//                    .setView(editText)
+//                    .setTitle("Hue = " + result);
+//            AlertDialog dialog = builder.create();
+//            dialog.show();
 
         }
     }
@@ -378,14 +471,33 @@ public class MainActivity extends Activity {
         Log.d(DEBUG, "width is scaled by "+widthScale);
         Log.d(DEBUG, "height is scaled by "+heightScale);
         try {
-            bmp = Bitmap.createBitmap(bmp, (int)(lp.leftMargin * (1/widthScale)), (int)(lp.topMargin * (1/heightScale)), (int)(lp.width * (1/widthScale)), (int)(lp.height * (1/heightScale)));
+            int newX = (int)(lp.leftMargin * (1/widthScale));
+            int newY = (int)(lp.topMargin * (1/heightScale));
+            int newWidth = (int)(lp.width * (1/widthScale));
+            int newHeight = (int)(lp.height * (1/heightScale));
+
+            bmp = Bitmap.createBitmap(bmp, newX, newY, newWidth, newHeight);
+            dimensions.push(new Dimension(newX, newY, newWidth, newHeight));
             mPreview.setImageBitmap(bmp);
         } catch (IllegalArgumentException e) {
-
+            Log.d(DEBUG, "crop err: "+e.getMessage());
         }
 
         mCrop.setLayoutParams(new RelativeLayout.LayoutParams(0, 0));
 
+    }
+
+    class Dimension {
+        public int x;
+        public int y;
+        public int width;
+        public int height;
+        public Dimension(int x, int y, int width, int height) {
+            this.x = x;
+            this.y = y;
+            this.width = width;
+            this.height = height;
+        }
     }
 
 }
