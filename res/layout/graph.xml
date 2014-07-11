@@ -29,8 +29,8 @@
             style="@android:style/Widget.Holo.Button.Borderless"
             android:textColor="@android:color/holo_blue_dark"
             android:layout_height="wrap_content"
-            android:text="Import"
-            android:onClick="importClicked"
+            android:text="Refresh"
+            android:onClick="refreshClicked"
             />
 
         <Button
@@ -109,6 +109,14 @@
             android:layout_width="fill_parent"
             android:layout_height="300dip"
             android:id="@+id/graph" />
+
+    <ListView
+        android:id="@+id/dataList"
+        android:layout_width="fill_parent"
+        android:layout_marginTop="10dp"
+        android:layout_marginLeft="40dp"
+        android:layout_marginRight="40dp"
+        android:layout_height="300dp" />
 
 </LinearLayout>
 

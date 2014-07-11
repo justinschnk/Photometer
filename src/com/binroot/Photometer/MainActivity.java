@@ -4,10 +4,7 @@ import android.app.Activity;
 import android.app.AlertDialog;
 import android.content.*;
 import android.database.Cursor;
-import android.graphics.Bitmap;
-import android.graphics.BitmapFactory;
-import android.graphics.Color;
-import android.graphics.Point;
+import android.graphics.*;
 import android.net.Uri;
 import android.os.AsyncTask;
 import android.os.Bundle;
@@ -22,12 +19,10 @@ import android.view.animation.ScaleAnimation;
 import android.widget.*;
 import com.binroot.regression.NotEnoughValues;
 import com.binroot.regression.RegressionMethods;
+import com.google.code.ekmeans.EKmeans;
 
 import java.io.File;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.Stack;
+import java.util.*;
 
 public class MainActivity extends Activity {
 
@@ -49,11 +44,13 @@ public class MainActivity extends Activity {
 
     HueData hueData;
     Uri mCapturedImageURI;
+    TextView mBloodText;
 
     Bitmap bmp = null;
 
     Stack<Dimension> dimensions = new Stack<Dimension>();
 
+    MyApplication app;
 
     SharedPreferences sp;
 
@@ -65,14 +62,16 @@ public class MainActivity extends Activity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.main);
 
+        app = (MyApplication) getApplication();
 
-        hueData = new HueData(getApplicationContext(), "1");
+        hueData = new HueData(getApplicationContext(), "1", null);
         sp = getSharedPreferences("Photometer", Context.MODE_PRIVATE);
 
 
         mPreview = (ImageView) findViewById(R.id.preview);
         mCrop = (ImageView) findViewById(R.id.croprect);
         mCropButton = (Button) findViewById(R.id.cropButton);
+        mBloodText = (TextView) findViewById(R.id.bloodRatio);
 
         ContentValues values = new ContentValues();
         values.put(MediaStore.Images.Media.TITLE, "Image File name");
@@ -203,6 +202,7 @@ public class MainActivity extends Activity {
         startActivityForResult(mCameraIntent, CAMERA_REQUEST);
     }
 
+
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         if (requestCode == CAMERA_REQUEST && resultCode == RESULT_OK) {
             loadPhoto(getPath(mCapturedImageURI));
@@ -322,8 +322,12 @@ public class MainActivity extends Activity {
         final ArrayList<String> displayDataList = new ArrayList<String>();
 
         for (Double k : keys) {
-            for(Double h : hueData.get(k)) {
-                displayDataList.add(k +" → " + h);
+            for(HueMeasurement hm : hueData.get(k)) {
+                if (hm.getLabel().isEmpty()) {
+                    displayDataList.add(k +" → " + hm.getVal());
+                } else {
+                    displayDataList.add(k + " " + hm.getLabel() + " → " + hm.getVal());
+                }
             }
         }
 
@@ -385,6 +389,367 @@ public class MainActivity extends Activity {
     public void hueClicked(View v) {
         if (bmp != null) {
             new HueTask().execute(bmp);
+        }
+    }
+
+
+
+    public void bloodClicked(View v) {
+        if (bmp != null) {
+            new BloodTask3().execute(bmp);
+        }
+    }
+
+    private class BloodTask3 extends AsyncTask<Bitmap, Integer, Pair<Bitmap, Long>> {
+        protected void onPreExecute() {
+            mBloodText.setText("CALCULATING...");
+            mBloodText.setVisibility(View.VISIBLE);
+            mProgressPercent.setVisibility(View.VISIBLE);
+        }
+
+        protected void onProgressUpdate(Integer... progress) {
+            mProgressPercent.setProgress(progress[0]);
+        }
+
+        protected Pair<Bitmap, Long> doInBackground(Bitmap... b) {
+            int height = b[0].getHeight();
+            int width = b[0].getWidth();
+            int totalSize = width * height;
+
+            int [] pixels = new int[totalSize];
+            b[0].getPixels(pixels, 0, width, 0, 0, width, height);
+
+            long bloodPixels = 0;
+
+            double thdb = 0.1;
+            double thds = 0.8;
+
+            int pixelIndex = 0;
+
+            for(int y=0; y<height; y++) {
+                for(int x=0; x<width; x++) {
+                    float [] hsv = new float[3];
+                    Color.colorToHSV(b[0].getPixel(x, y), hsv);
+                    //Log.d(DEBUG, "HSV: "+hsv[0]+", "+hsv[1]+", "+hsv[2]);
+                    if (hsv[2] < thdb) {
+                        pixels[pixelIndex] = Color.BLACK;
+                    } else {
+                        if (hsv[1] > thds) {
+                            pixels[pixelIndex] = Color.RED;
+                            bloodPixels++;
+                        } else {
+                            pixels[pixelIndex] = Color.BLACK;
+                        }
+                    }
+                    pixelIndex++;
+                }
+                publishProgress((int)(100.0 * (y+1.0)/(height+0.0)));
+            }
+
+            return new Pair<Bitmap, Long>(Bitmap.createBitmap(pixels, width, height, Bitmap.Config.ARGB_4444), bloodPixels);
+        }
+
+        @Override
+        protected void onPostExecute(final Pair<Bitmap, Long> result) {
+            mProgressPercent.setVisibility(View.GONE);
+            long numPixels = result.second;
+            mBloodText.setText( numPixels +" pixels");
+            bmp = result.first;
+            mPreview.setImageBitmap(bmp);
+        }
+    }
+
+    private class BloodTask2 extends AsyncTask<Bitmap, Integer, Pair<Bitmap, Double>> {
+
+        protected void onPreExecute() {
+            mBloodText.setText("CALCULATING...");
+            mBloodText.setVisibility(View.VISIBLE);
+            mProgressPercent.setVisibility(View.VISIBLE);
+        }
+
+        protected Pair<Bitmap, Double> doInBackground(Bitmap... b) {
+            int height = b[0].getHeight();
+            int width = b[0].getWidth();
+            int totalSize = width * height;
+
+            int [] pixels = new int[totalSize];
+            b[0].getPixels(pixels, 0, width, 0, 0, width, height);
+
+
+            double[][] points = new double[totalSize][3];
+
+            for (int i=0; i<pixels.length; i++) {
+                points[i][0] = Color.red(pixels[i]);
+                points[i][1] = Color.green(pixels[i]);
+                points[i][2] = Color.blue(pixels[i]);
+            }
+
+            double[][] centroids = new double[5][3];
+            // red centroid
+            centroids[0][0] = 255; centroids[0][1] = 0; centroids[0][2] = 0;
+            // green centroid
+            centroids[1][0] = 0; centroids[1][1] = 255; centroids[1][2] = 0;
+            // blue centroid
+            centroids[2][0] = 0; centroids[2][1] = 0; centroids[2][2] = 255;
+            // black centroid
+            centroids[3][0] = 0; centroids[3][1] = 0; centroids[3][2] = 0;
+            // white centroid
+            centroids[4][0] = 255; centroids[4][1] = 255; centroids[4][2] = 255;
+
+            EKmeans eKmeans = new EKmeans(centroids, points);
+            eKmeans.setDistanceFunction(EKmeans.MANHATTAN_DISTANCE_FUNCTION);
+            Log.d(DEBUG, "starting k-means clustering");
+            eKmeans.run();
+
+
+            int rCount = 0;
+            int gCount = 0;
+            int wCount = 0;
+            int[] assignments = eKmeans.getAssignments();
+            for (int i=0; i<totalSize; i++) {
+                //Log.d(DEBUG, "point "+i+" is assigned to cluster "+assignments[i]);
+                switch (assignments[i]) {
+                    case 0: pixels[i] = Color.RED; rCount++; break;
+                    case 1: pixels[i] = Color.GREEN; gCount++; break;
+                    case 2: pixels[i] = Color.BLUE; break;
+                    case 3: pixels[i] = Color.BLACK; break;
+                    case 4: pixels[i] = Color.WHITE; wCount++; break;
+                    default: break;
+                }
+            }
+
+            double bloodRatio = (rCount+0.0) / ( rCount + gCount - wCount + 0.0 );
+
+            return new Pair<Bitmap, Double>(Bitmap.createBitmap(pixels, width, height, Bitmap.Config.ARGB_4444), bloodRatio);
+        }
+
+        protected void onProgressUpdate(Integer... progress) {
+            mProgressPercent.setProgress(progress[0]);
+        }
+
+        protected void onPostExecute(final Pair<Bitmap, Double> result) {
+            mProgressPercent.setVisibility(View.GONE);
+            double percent = result.second * 100;
+            mBloodText.setText( String.format("%.3f", percent) +"% blood");
+            bmp = result.first;
+            mPreview.setImageBitmap(bmp);
+        }
+    }
+
+    public void bloodRatioClicked(View view) {
+        mBloodText.setVisibility(View.GONE);
+    }
+
+    private class BloodTask extends AsyncTask<Bitmap, Integer, Bitmap> {
+
+        protected void onPreExecute() {
+            mProgressPercent.setVisibility(View.VISIBLE);
+        }
+
+        private int pixels[];
+        private int width, height;
+        private boolean visited[];
+
+        protected Bitmap doInBackground(Bitmap... b) {
+
+            height = b[0].getHeight();
+            width = b[0].getWidth();
+            int totalSize = width * height;
+
+            long rCount = 0;
+            long gCount = 0;
+            long bCount = 0;
+
+            pixels = new int[totalSize];
+            visited = new boolean[totalSize];
+            b[0].getPixels(pixels, 0, width, 0, 0, width, height);
+
+            /*
+             * Find the average red, green, and blue values from all pixels
+             */
+            for (int i=0; i<pixels.length; i++) {
+                rCount += Color.red(pixels[i]);
+                gCount += Color.green(pixels[i]);
+                bCount += Color.blue(pixels[i]);
+            }
+
+            int rAvg = (int) (rCount/totalSize);
+            int gAvg = (int) (gCount/totalSize);
+            int bAvg = (int) (bCount/totalSize);
+
+
+             /*
+             * Normalize each pixel, and amplify the strongest color
+             *
+             * Also, Compute the center of mass of each color
+             *
+             */
+            int avgColVal = (rAvg+gAvg+bAvg)/3;
+		    int diffR = avgColVal - rAvg;
+		    int diffG = avgColVal - gAvg;
+		    int diffB = avgColVal - bAvg;
+
+            int avgRedX = 0;
+            int avgRedY = 0;
+            int totalRed = 0;
+            int avgGreenX = 0;
+            int avgGreenY = 0;
+            int totalGreen = 0;
+            int avgBlueX = 0;
+            int avgBlueY = 0;
+            int totalBlue = 0;
+
+            for (int i=0; i<pixels.length; i++) {
+                int newR = Color.red(pixels[i]) + diffR;
+                int newG = Color.green(pixels[i]) + diffG;
+                int newB = Color.blue(pixels[i]) + diffB;
+
+
+                if(newR >= newG && newR>=newB) {
+                    pixels[i] = Color.RED;
+                    avgRedX += i%width;
+                    avgRedY += i/width;
+                    totalRed++;
+				}
+				else if(newG >= newR && newG>=newB) {
+                    pixels[i] = Color.GREEN;
+                    avgGreenX += i%width;
+                    avgGreenY += i/width;
+                    totalGreen++;
+				}
+				else if(newB >= newR && newB>=newG) {
+                    pixels[i] = Color.BLUE;
+                    avgBlueX += i%width;
+                    avgBlueY += i/width;
+                    totalBlue++;
+				}
+            }
+
+            avgRedX /= totalRed;
+            avgRedY /= totalRed;
+            avgGreenX /= totalGreen;
+            avgGreenY /= totalGreen;
+            avgBlueX /= totalBlue;
+            avgBlueY /= totalBlue;
+
+            pixels[avgRedX + avgRedY*width] = Color.YELLOW;
+            pixels[avgRedX+1 + avgRedY*width] = Color.YELLOW;
+            pixels[avgRedX-1 + avgRedY*width] = Color.YELLOW;
+            pixels[avgRedX + (avgRedY+1)*width] = Color.YELLOW;
+            pixels[avgRedX + (avgRedY-1)*width] = Color.YELLOW;
+
+            pixels[avgGreenX + avgGreenY*width] = Color.YELLOW;
+            pixels[avgGreenX+1 + avgGreenY*width] = Color.YELLOW;
+            pixels[avgGreenX-1 + avgGreenY*width] = Color.YELLOW;
+            pixels[avgGreenX + (avgGreenY+1)*width] = Color.YELLOW;
+            pixels[avgGreenX + (avgGreenY-1)*width] = Color.YELLOW;
+
+            pixels[avgBlueX + avgBlueY*width] = Color.YELLOW;
+            pixels[avgBlueX+1 + avgBlueY*width] = Color.YELLOW;
+            pixels[avgBlueX-1 + avgBlueY*width] = Color.YELLOW;
+            pixels[avgBlueX + (avgBlueY+1)*width] = Color.YELLOW;
+            pixels[avgBlueX + (avgBlueY-1)*width] = Color.YELLOW;
+
+
+//            /**
+//             * Find the largest green mass
+//             */
+//            HashMap<Integer, Integer> areaMap = new HashMap<Integer, Integer>();
+//            Arrays.fill(visited, false);
+//            int maxGreenMass = 0;
+//            int maxGreenMassI = -1;
+//            for(int i=0; i<pixels.length; i++) {
+//                if (Color.green(pixels[i]) > 0 && !visited[i]) {
+//                    int greenMass = count(i);
+//                    if (greenMass > maxGreenMass) {
+//                        maxGreenMass = greenMass;
+//                        maxGreenMassI = i;
+//                    }
+//                    areaMap.put(i, count(i));
+//                }
+//            }
+
+//            Arrays.fill(visited, false);
+//            for(int pixelIndex : areaMap.keySet()) {
+//                if(pixelIndex != maxGreenMassI) {
+//                    fill(pixelIndex, Color.BLUE);
+//                }
+//            }
+
+
+            return Bitmap.createBitmap(pixels, width, height, Bitmap.Config.ARGB_4444);
+        }
+
+        private void fill(int pixelIndex, int col) {
+            // Ignore the 4 edges of an image
+            if (pixelIndex%width == 0 || pixelIndex%width == width-1 ||
+                    pixelIndex/width == 0 || pixelIndex/width == height-1) {
+                return;
+            }
+
+            int oldColor = pixels[pixelIndex];
+
+            pixels[pixelIndex] = col;
+
+            visited[pixelIndex] = true;
+
+            if (!visited[north(pixelIndex)] && pixels[north(pixelIndex)] == oldColor) fill(north(pixelIndex), col);
+            if (!visited[northeast(pixelIndex)] && pixels[northeast(pixelIndex)] == pixels[pixelIndex]) fill(northeast(pixelIndex), col);
+            if (!visited[east(pixelIndex)] && pixels[east(pixelIndex)] == pixels[pixelIndex]) fill(east(pixelIndex), col);
+            if (!visited[southeast(pixelIndex)] && pixels[southeast(pixelIndex)] == pixels[pixelIndex]) fill(southeast(pixelIndex), col);
+            if (!visited[south(pixelIndex)] && pixels[south(pixelIndex)] == pixels[pixelIndex]) fill(south(pixelIndex), col);
+            if (!visited[southwest(pixelIndex)] && pixels[southwest(pixelIndex)] == pixels[pixelIndex]) fill(southwest(pixelIndex), col);
+            if (!visited[west(pixelIndex)] && pixels[west(pixelIndex)] == pixels[pixelIndex]) fill(west(pixelIndex), col);
+            if (!visited[northwest(pixelIndex)] && pixels[northwest(pixelIndex)] == pixels[pixelIndex]) fill(northwest(pixelIndex), col);
+        }
+
+        /**
+         * Count all pixels of a specific color neighboring the pixelIndex
+         * @param pixelIndex
+         * @return number of pixels
+         */
+        private int count(int pixelIndex) {
+            int sum = 0;
+
+            // Ignore the 4 edges of an image
+            if (pixelIndex%width == 0 || pixelIndex%width == width-1 ||
+                    pixelIndex/width == 0 || pixelIndex/width == height-1) {
+                return sum;
+            }
+
+            visited[pixelIndex] = true;
+
+            if (!visited[north(pixelIndex)] && pixels[north(pixelIndex)] == pixels[pixelIndex]) sum += count(north(pixelIndex));
+            if (!visited[northeast(pixelIndex)] && pixels[northeast(pixelIndex)] == pixels[pixelIndex]) sum += count(northeast(pixelIndex));
+            if (!visited[east(pixelIndex)] && pixels[east(pixelIndex)] == pixels[pixelIndex]) sum += count(east(pixelIndex));
+            if (!visited[southeast(pixelIndex)] && pixels[southeast(pixelIndex)] == pixels[pixelIndex]) sum += count(southeast(pixelIndex));
+            if (!visited[south(pixelIndex)] && pixels[south(pixelIndex)] == pixels[pixelIndex]) sum += count(south(pixelIndex));
+            if (!visited[southwest(pixelIndex)] && pixels[southwest(pixelIndex)] == pixels[pixelIndex]) sum += count(southwest(pixelIndex));
+            if (!visited[west(pixelIndex)] && pixels[west(pixelIndex)] == pixels[pixelIndex]) sum += count(west(pixelIndex));
+            if (!visited[northwest(pixelIndex)] && pixels[northwest(pixelIndex)] == pixels[pixelIndex]) sum += count(northwest(pixelIndex));
+
+            return sum;
+        }
+
+        private int north(int pixelIndex) { return pixelIndex-width; }
+        private int northeast(int pixelIndex) { return pixelIndex-width + 1; }
+        private int east(int pixelIndex) { return pixelIndex + 1; }
+        private int southeast(int pixelIndex) { return pixelIndex+width + 1; }
+        private int south(int pixelIndex) { return pixelIndex+width; }
+        private int southwest(int pixelIndex) { return pixelIndex+width - 1; }
+        private int west(int pixelIndex) { return pixelIndex - 1; }
+        private int northwest(int pixelIndex) { return pixelIndex-width - 1; }
+
+        protected void onProgressUpdate(Integer... progress) {
+            mProgressPercent.setProgress(progress[0]);
+        }
+
+        protected void onPostExecute(final Bitmap result) {
+            mProgressPercent.setVisibility(View.GONE);
+            //Toast.makeText(getApplicationContext(), "Blood ratio: "+result, Toast.LENGTH_SHORT).show();
+
+            bmp = result;
+            mPreview.setImageBitmap(bmp);
         }
     }
 

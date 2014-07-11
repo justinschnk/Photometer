@@ -1,5 +1,6 @@
 package com.binroot.Photometer;
 
+import android.app.ActionBar;
 import android.app.Activity;
 import android.app.AlertDialog;
 import android.content.DialogInterface;
@@ -18,10 +19,7 @@ import android.view.KeyEvent;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
-import android.widget.EditText;
-import android.widget.LinearLayout;
-import android.widget.TextView;
-import android.widget.Toast;
+import android.widget.*;
 import com.binroot.regression.NotEnoughValues;
 import com.jjoe64.graphview.GraphView;
 import com.jjoe64.graphview.GraphViewSeries;
@@ -29,7 +27,7 @@ import com.jjoe64.graphview.LineGraphView;
 
 import java.io.*;
 
-public class GraphActivity extends Activity {
+public class GraphActivity extends Activity implements Updatable {
 
     final String DEBUG = "GraphActivity";
 
@@ -43,6 +41,11 @@ public class GraphActivity extends Activity {
     EditText hueQuery;
     EditText concentrationQuery;
 
+    ListView dataList;
+    DataListAdapter dataListAdapter;
+
+    MyApplication app;
+
     TextView equation;
 
     final int IMPORT_FILE = 0;
@@ -50,11 +53,12 @@ public class GraphActivity extends Activity {
     public void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.graph);
+        app = (MyApplication) getApplication();
         hueQuery = ((EditText) findViewById(R.id.hueQuery));
         concentrationQuery = (EditText) findViewById(R.id.concentrationQuery);
         equation = (TextView) findViewById(R.id.equation);
 
-        hueData = new HueData(getApplicationContext(), "1");
+        hueData = new HueData(getApplicationContext(), "1", this);
         hueSeries = new GraphViewSeries("Actual", new GraphViewSeries.GraphViewSeriesStyle(Color.rgb(255,0,0), 1), new GraphView.GraphViewData[0]);
         expSeries = new GraphViewSeries("Predicted", new GraphViewSeries.GraphViewSeriesStyle(Color.rgb(56,192,244), 5), new GraphView.GraphViewData[0]);
         graphView = new LineGraphView(this , "Concentration vs. Hue");
@@ -67,6 +71,8 @@ public class GraphActivity extends Activity {
         graphView.getGraphViewStyle().setGridColor(Color.GRAY);
         LinearLayout layout = (LinearLayout) findViewById(R.id.graph);
         layout.addView(graphView);
+
+        dataList = (ListView)findViewById(R.id.dataList);
 
 
         Bundle bundle = getIntent().getExtras();
@@ -113,9 +119,13 @@ public class GraphActivity extends Activity {
             return;
         }
 
+
+
         final EditText editText = new EditText(getApplicationContext());
-        editText.setLayoutParams(new ViewGroup.MarginLayoutParams(300, 50));
+        editText.setLayoutParams(new ViewGroup.MarginLayoutParams(200, 50));
         editText.setTextColor(Color.BLACK);
+
+
 
         AlertDialog.Builder builder = new AlertDialog.Builder(GraphActivity.this);
         builder.setMessage("Enter protein concentration value for hue "+result)
@@ -124,9 +134,10 @@ public class GraphActivity extends Activity {
                     public void onClick(DialogInterface dialogInterface, int i) {
                         try {
                             double key = Double.parseDouble(editText.getText().toString());
-                            hueData.insertAppend(key, result);
+                            hueData.insertAppend(key, result, "A", null, hueData.getUID());
                             drawExpGraph();
                             drawHueGraph();
+                            updateDataList();
                             hueQueryClicked(null);
                         } catch (NumberFormatException e) {
                         }
@@ -152,6 +163,16 @@ public class GraphActivity extends Activity {
         Intent i = new Intent(Intent.ACTION_GET_CONTENT);
         i.setType("text/*");
         startActivityForResult(i, IMPORT_FILE);
+    }
+
+    public void refreshClicked(View v) {
+        hueData.resync();
+    }
+
+
+    private void updateDataList() {
+        dataListAdapter.setData(this.hueData);
+        dataListAdapter.notifyDataSetChanged();
     }
 
     public void hueQueryClicked(View v) {
@@ -235,8 +256,6 @@ public class GraphActivity extends Activity {
     public void onResume() {
         super.onResume();
         hueData.load();
-        drawHueGraph();
-        drawExpGraph();
     }
 
     public void drawExpGraph() {
@@ -293,4 +312,17 @@ public class GraphActivity extends Activity {
     }
 
 
+    @Override
+    public void updateData(HueData hueData) {
+
+        if (dataListAdapter == null) {
+            dataListAdapter = new DataListAdapter(getApplicationContext(), hueData);
+            dataList.setAdapter(dataListAdapter);
+        }
+
+        this.hueData = hueData;
+        drawHueGraph();
+        drawExpGraph();
+        updateDataList();
+    }
 }

@@ -12,7 +12,7 @@
         android:gravity="center"
         android:orientation="horizontal">
         <RelativeLayout
-            android:layout_width="70dp"
+            android:layout_width="60dp"
             android:onClick="galClicked"
             android:layout_height="wrap_content">
             <ImageView
@@ -32,13 +32,9 @@
                     />
         </RelativeLayout>
 
-        <View
-            android:layout_width="1dp"
-            android:layout_height="fill_parent"
-            android:background="#AAAAAAAA"/>
 
         <RelativeLayout
-                android:layout_width="70dp"
+                android:layout_width="60dp"
                 android:layout_height="wrap_content"
                 android:onClick="camClicked">
             <ImageView
@@ -58,15 +54,29 @@
                     />
         </RelativeLayout>
 
-        <View
-            android:layout_width="0dp"
-            android:layout_marginLeft="40dp"
-            android:layout_height="fill_parent"
-            android:background="#AAAAAAAA"
-        />
+        <RelativeLayout
+                android:layout_width="60dp"
+                android:layout_height="wrap_content"
+                android:onClick="bloodClicked">
+            <ImageView
+                    android:id="@+id/bloodButton"
+                    android:layout_width="40dp"
+                    android:layout_height="40dp"
+                    android:layout_centerHorizontal="true"
+                    android:background="@drawable/drop"
+                    />
+            <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_below="@id/bloodButton"
+                    android:textColor="@android:color/holo_blue_dark"
+                    android:layout_centerHorizontal="true"
+                    android:text="Blood"
+                    />
+        </RelativeLayout>
 
         <RelativeLayout
-                android:layout_width="70dp"
+                android:layout_width="60dp"
                 android:layout_height="wrap_content"
                 android:onClick="hueClicked">
             <ImageView
@@ -74,7 +84,6 @@
                 android:layout_width="40dp"
                 android:layout_height="40dp"
                 android:layout_centerHorizontal="true"
-                android:enabled="false"
                 android:background="@android:drawable/star_off"
                 />
             <TextView
@@ -88,14 +97,10 @@
         </RelativeLayout>
 
 
-        <View
-                android:layout_width="1dp"
-                android:layout_height="fill_parent"
-                android:background="#AAAAAAAA"
-                />
+
 
         <RelativeLayout
-                android:layout_width="70dp"
+                android:layout_width="60dp"
                 android:layout_height="wrap_content"
                 android:onClick="dataClicked">
             <ImageView
@@ -132,6 +137,18 @@
                 android:layout_alignParentTop="true"
                 android:scaleType="fitXY"
                 />
+        <TextView
+            android:id="@+id/bloodRatio"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_centerInParent="true"
+            android:onClick="bloodRatioClicked"
+            android:clickable="true"
+            android:text="CALCULATING..."
+            android:visibility="gone"
+            android:textSize="50px"
+            android:textColor="@color/white"
+            />
         <ImageView
                 android:id="@+id/croprect"
                 android:layout_width="wrap_content"
